@@ -9,7 +9,20 @@ export function useKeeper() {
   const add = (collection, item) => { state[collection].unshift({ id: `${collection}-${Date.now()}`, createdAt: new Date().toISOString(), ...item }); persist() }
   const update = (collection, id, patch) => { const item = state[collection].find((entry) => entry.id === id); if (item) Object.assign(item, patch); persist() }
   const remove = (collection, id) => { state[collection] = state[collection].filter((entry) => entry.id !== id); persist() }
+  // 删除菜谱：mode 为 'cascade' 时连带删除名下烹饪记录；
+  // 为 'detach'（默认）时保留烹饪记录，快照菜名并解除对菜谱的引用，避免悬空指向
+  const removeRecipe = (id, mode = 'detach') => {
+    const recipe = state.documents.find((entry) => entry.id === id)
+    if (!recipe) return
+    state.usages = state.usages.map((entry) => {
+      if (entry.documentId !== id) return entry
+      if (mode === 'cascade') return null
+      return { ...entry, documentId: null, recipeName: recipe.name, recipeDeleted: true }
+    }).filter(Boolean)
+    state.documents = state.documents.filter((entry) => entry.id !== id)
+    persist()
+  }
   const reset = () => { Object.assign(state, structuredClone(seed)); persist() }
   const metrics = computed(() => config.metrics.map((metric) => ({ ...metric, value: metric.value ? metric.value(state) : state[metric.collection]?.length || 0 })))
-  return { state, add, update, remove, reset, persist, metrics }
+  return { state, add, update, remove, removeRecipe, reset, persist, metrics }
 }
